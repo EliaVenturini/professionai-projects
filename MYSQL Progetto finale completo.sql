@@ -1,18 +1,18 @@
--- Tabella temporanea per età dei clienti
+-- età clienti (uso 365.25 per considerare gli anni bisestili)
 DROP TEMPORARY TABLE IF EXISTS banca.temp_eta_cliente;
 CREATE TEMPORARY TABLE banca.temp_eta_cliente AS
 SELECT id_cliente,
     FLOOR(DATEDIFF(CURDATE(), data_nascita) / 365.25) AS eta
 FROM banca.cliente;
 
--- Tabella temporanea per numero totale di conti per cliente
+-- numero conti per cliente
 DROP TEMPORARY TABLE IF EXISTS banca.temp_numero_conti;
 CREATE TEMPORARY TABLE banca.temp_numero_conti AS
-SELECT id_cliente, COUNT(DISTINCT id_conto) AS numero_conti_posseduti
+SELECT id_cliente, COUNT(DISTINCT id_conto) AS numero_conti_posseduti -- DISTINCT per evitare duplicati
 FROM banca.conto
 GROUP BY id_cliente;
 
--- Tabella temporanea per conti posseduti per tipologia
+-- conti per tipologia (uso CASE WHEN per pivottare le tipologie in colonne)
 DROP TEMPORARY TABLE IF EXISTS banca.temp_conti_tipologia;
 CREATE TEMPORARY TABLE banca.temp_conti_tipologia AS
 SELECT co.id_cliente,
@@ -24,7 +24,8 @@ FROM banca.conto co
 LEFT JOIN banca.tipo_conto tc ON co.id_tipo_conto = tc.id_tipo_conto
 GROUP BY co.id_cliente;
 
--- Tabella temporanea per transazioni totali in uscita e in entrata
+-- transazioni totali entrata/uscita
+-- segno '+' = entrata, segno '-' = uscita
 DROP TEMPORARY TABLE IF EXISTS banca.temp_transazioni_totali;
 CREATE TEMPORARY TABLE banca.temp_transazioni_totali AS
 SELECT co.id_cliente,
@@ -37,7 +38,10 @@ LEFT JOIN banca.conto co ON t.id_conto = co.id_conto
 LEFT JOIN banca.tipo_transazione tt ON t.id_tipo_trans = tt.id_tipo_transazione
 GROUP BY co.id_cliente;
 
--- Tabella temporanea per transazioni per tipologia di conto
+-- transazioni per tipologia di conto
+-- combino segno e tipo conto nello stesso CASE WHEN per evitare join aggiuntivi
+-- nota: MySQL non supporta la sintassi PIVOT, quindi ogni combinazione
+-- segno/tipo_conto va scritta come colonna separata con SUM(CASE WHEN)
 DROP TEMPORARY TABLE IF EXISTS banca.temp_transazioni_tipologia;
 CREATE TEMPORARY TABLE banca.temp_transazioni_tipologia AS
 SELECT co.id_cliente,
@@ -63,8 +67,10 @@ LEFT JOIN banca.tipo_conto tc ON co.id_tipo_conto = tc.id_tipo_conto
 LEFT JOIN banca.tipo_transazione tt ON t.id_tipo_trans = tt.id_tipo_transazione
 GROUP BY co.id_cliente;
 
--- Query finale che unisce tutte le tabelle temporanee
-create table banca.final_table as 
+-- unisco tutto in una tabella finale
+-- nota: IFNULL necessario su ogni colonna perché i LEFT JOIN
+-- possono restituire NULL per clienti senza conti o transazioni
+CREATE TABLE banca.final_table AS 
 SELECT 
     cl.id_cliente, nome, cognome, data_nascita, eta, numero_conti_posseduti, 
     IFNULL(conto_base, 0) AS conto_base, IFNULL(conto_business, 0) AS conto_business, 
